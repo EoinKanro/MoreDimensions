@@ -23,3 +23,9 @@ Additional Resources:
 ==========
 Community Documentation: https://docs.neoforged.net/  
 NeoForged Discord: https://discord.neoforged.net/
+
+
+
+https://misode.github.io/dimension-type/
+https://misode.github.io/dimension/
+
