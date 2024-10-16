@@ -2,7 +2,12 @@ package io.github.eoinkanro.mc.moredimensions.tools;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.util.Set;
+import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.commands.CommandSourceStack;
@@ -11,12 +16,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
+import net.minecraft.world.level.biome.Biome;
 
 import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 
 public class DimensionManager {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Set<String> FORBIDDEN_BIOMES = Set.of("minecraft:crimson_forest",
+        "minecraft:end_midlands", "minecraft:nether_wastes", "minecraft:the_void", "minecraft:end_highlands",
+        "minecraft:end_barrens", "minecraft:small_end_islands", "minecraft:the_end", "minecraft:soul_sand_valley",
+        "minecraft:warped_forest");
+
 
     public static boolean createDimension(MinecraftServer server, String name, CommandSourceStack source) {
         String dimensionName = name.toLowerCase().replaceAll("[^a-z0-9_\\-]", "");
@@ -28,10 +39,12 @@ public class DimensionManager {
         }
 
         try {
-            JsonObject dimensionJson = generateDimensionJson();
-
             Files.createDirectories(dimensionJsonPath.getParent());
-            Files.writeString(dimensionJsonPath, GSON.toJson(dimensionJson));
+            Files.writeString(dimensionJsonPath, GSON.toJson(generateDimensionJson(server, dimensionName)));
+
+            Path dimensionTypeJsonPath = getDimensionTypeJsonPath(server, dimensionName);
+            Files.createDirectories(dimensionTypeJsonPath.getParent());
+            Files.writeString(dimensionTypeJsonPath, GSON.toJson(generateDefaultDimensionType()));
 
             source.sendSuccess(() -> Component.literal("Dimension '" + name + "' created. Please restart the server to load the new dimension."), false);
 
@@ -45,32 +58,72 @@ public class DimensionManager {
         }
     }
 
-    private static JsonObject generateDimensionJson() {
-        // Create the JSON object representing the dimension
+    private static JsonObject generateDimensionJson(MinecraftServer server, String dimensionName) {
         JsonObject dimensionJson = new JsonObject();
 
-        // Set the type to "minecraft:overworld"
-        dimensionJson.addProperty("type", "minecraft:overworld");
+        dimensionJson.addProperty("type", MOD_ID + ":" + dimensionName);
 
-        // Create the generator object
         JsonObject generator = new JsonObject();
         generator.addProperty("type", "minecraft:noise");
-        generator.addProperty("seed", new Random().nextLong());
-
-        // Use the Overworld settings
         generator.addProperty("settings", "minecraft:overworld");
 
         // Set the biome source
         JsonObject biomeSource = new JsonObject();
         biomeSource.addProperty("type", "minecraft:multi_noise");
-        biomeSource.addProperty("preset", "minecraft:overworld");
 
+        JsonArray biomes = new JsonArray();
+
+        RegistryAccess registryAccess = server.registryAccess();
+        Registry<Biome> biomeRegistry = registryAccess.registryOrThrow(Registries.BIOME);
+        Random random = new Random();
+        biomeRegistry.keySet().forEach(biomeLocation -> {
+            String biomeName = biomeLocation.getNamespace() + ":" + biomeLocation.getPath();
+            if (FORBIDDEN_BIOMES.contains(biomeName)) {
+                return;
+            }
+
+            JsonObject biome = new JsonObject();
+            biome.addProperty("biome", biomeLocation.getNamespace() + ":" + biomeLocation.getPath());
+
+            JsonObject parameters = new JsonObject();
+
+            parameters.add("temperature", createBiomeParameterRandomArray(random));
+            parameters.add("humidity", createBiomeParameterRandomArray(random));
+            parameters.add("continentalness", createBiomeParameterRandomArray(random));
+            parameters.add("erosion", createBiomeParameterRandomArray(random));
+            parameters.add("weirdness", createBiomeParameterRandomArray(random));
+            parameters.add("depth", createBiomeParameterRandomArray(random));
+            parameters.addProperty("offset", getBiomeOffsetRandom(random));
+
+            biome.add("parameters", parameters);
+            biomes.add(biome);
+        });
+
+        biomeSource.add("biomes", biomes);
         generator.add("biome_source", biomeSource);
 
         // Add the generator to the dimension JSON
         dimensionJson.add("generator", generator);
 
         return dimensionJson;
+    }
+
+    private static JsonArray createBiomeParameterRandomArray(Random random) {
+        JsonArray array = new JsonArray();
+        double first = getBiomeParameterRandom(random);
+        double second = getBiomeParameterRandom(random);
+
+        array.add(Math.min(first, second));
+        array.add(Math.max(first, second));
+        return array;
+    }
+
+    private static float getBiomeParameterRandom(Random random) {
+        return random.nextFloat(-2, 2);
+    }
+
+    private static float getBiomeOffsetRandom(Random random) {
+        return random.nextFloat(0, 1);
     }
 
     private static Path getDatapackPath(MinecraftServer server) {
@@ -100,6 +153,11 @@ public class DimensionManager {
                 .resolve(dimensionName + ".json");
     }
 
+    private static Path getDimensionTypeJsonPath(MinecraftServer server, String dimensionName) {
+        return getDimensionTypePath(server)
+            .resolve(dimensionName + ".json");
+    }
+
     /**
      * Create default files for future dimensions
      */
@@ -113,17 +171,6 @@ public class DimensionManager {
         if (!Files.exists(packMcmetaPath)) {
             Files.createFile(packMcmetaPath);
             Files.writeString(packMcmetaPath, GSON.toJson(generatePackMcmeta()));
-        }
-
-        Path dimensionTypePath = getDimensionTypePath(server);
-        if (!Files.exists(dimensionTypePath)) {
-            Files.createDirectories(dimensionTypePath);
-        }
-
-        Path defaultDimensionTypePath = dimensionTypePath.resolve(MOD_ID + ".json");
-        if (!Files.exists(defaultDimensionTypePath)) {
-            Files.createFile(defaultDimensionTypePath);
-            Files.writeString(defaultDimensionTypePath, GSON.toJson(generateDefaultDimensionType()));
         }
     }
 
@@ -174,4 +221,5 @@ public class DimensionManager {
 
         return defaultDimensionType;
     }
+
 }
