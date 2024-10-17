@@ -1,10 +1,13 @@
 package io.github.eoinkanro.mc.moredimensions;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.logging.LogUtils;
 import io.github.eoinkanro.mc.moredimensions.command.CreateDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.command.DeleteDimensionCommand;
-import io.github.eoinkanro.mc.moredimensions.command.TpDimensionCommand;
+import io.github.eoinkanro.mc.moredimensions.command.ListDimensionsCommand;
+import io.github.eoinkanro.mc.moredimensions.command.TeleportToDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
+import net.minecraft.commands.Commands;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -18,38 +21,65 @@ import org.slf4j.Logger;
 @Mod(MoreDimensions.MOD_ID)
 public class MoreDimensions {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
-    public static final String MOD_ID = "moredimensions";
+  private static final Logger LOGGER = LogUtils.getLogger();
+  public static final String MOD_ID = "moredimensions";
+  public static final String COMMAND_ID = "moredim";
 
-    // Valid constructor, only uses two of the available argument types
-    public MoreDimensions(IEventBus modBus, ModContainer container) {
-        NeoForge.EVENT_BUS.register(this);
-    }
+  // Valid constructor, only uses two of the available argument types
+  public MoreDimensions(IEventBus modBus, ModContainer container) {
+    NeoForge.EVENT_BUS.register(this);
+  }
 
-    @SubscribeEvent
-    public void onServerAboutToStart(ServerAboutToStartEvent event) {
-        try {
-            DimensionManager.init(event.getServer());
-        } catch (Exception e) {
-            LOGGER.error("Failed to initialize DimensionManager", e);
-        }
+  @SubscribeEvent
+  public void onServerAboutToStart(ServerAboutToStartEvent event) {
+    try {
+      DimensionManager.init(event.getServer());
+    } catch (Exception e) {
+      LOGGER.error("Failed to initialize DimensionManager", e);
     }
+  }
 
-    @SubscribeEvent
-    public void onServerStopped(ServerStoppedEvent event) {
-        try {
-            DimensionManager.stop(event.getServer());
-        } catch (Exception e) {
-            LOGGER.error("Failed to stop DimensionManager", e);
-        }
+  @SubscribeEvent
+  public void onServerStopped(ServerStoppedEvent event) {
+    try {
+      DimensionManager.stop(event.getServer());
+    } catch (Exception e) {
+      LOGGER.error("Failed to stop DimensionManager", e);
     }
+  }
 
-    @SubscribeEvent
-    public void onRegisterCommands(RegisterCommandsEvent event) {
-        CreateDimensionCommand.register(event.getDispatcher());
-        TpDimensionCommand.register(event.getDispatcher());
-        DeleteDimensionCommand.register(event.getDispatcher());
-    }
+  @SubscribeEvent
+  public void onRegisterCommands(RegisterCommandsEvent event) {
+    event.getDispatcher().register(
+        Commands.literal(COMMAND_ID)
+            .then(
+                Commands.literal("create")
+                    .requires(source -> source.hasPermission(3))
+                    .then(
+                        Commands.argument("name", StringArgumentType.string())
+                            .executes(CreateDimensionCommand::perform)
+                    )
+            )
+            .then(
+                Commands.literal("delete")
+                    .requires(source -> source.hasPermission(3))
+                    .then(
+                        Commands.argument("name", StringArgumentType.string())
+                            .executes(DeleteDimensionCommand::perform)
+                    )
+            ).then(
+                Commands.literal("tp")
+                    .then(
+                        Commands.argument("name", StringArgumentType.string())
+                            .executes(TeleportToDimensionCommand::perform)
+                    )
+            )
+            .then(
+                Commands.literal("list")
+                    .executes(ListDimensionsCommand::perform)
+            )
+    );
+  }
 
 
 }

@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken;
 import com.mojang.logging.LogUtils;
 import java.io.File;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -35,6 +36,8 @@ public class DimensionManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static final Set<String> DIMENSIONS_TO_DELETE = new HashSet<>();
+
+    public static final Set<String> OVERWORLD_NAMES = Set.of("overworld", "main");
 
     public static boolean isDimensionAvailable(String dimensionName) {
         return !DIMENSIONS_TO_DELETE.contains(dimensionName);
@@ -256,6 +259,30 @@ public class DimensionManager {
             }
         }
         file.delete();
+    }
+
+    public static int getAllDimensions(MinecraftServer server, CommandSourceStack source) {
+        List<String> result = new ArrayList<>(OVERWORLD_NAMES);
+
+        Path dimensionsPath = DimensionPath.getDatapackDimensionPath(server);
+        if (Files.exists(dimensionsPath)) {
+            File dimensionsFile = dimensionsPath.toFile();
+
+            File[] files = dimensionsFile.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile() && file.getName().endsWith(".json")) {
+                        String name = file.getName().replaceAll(".json", "");
+                        if (!DIMENSIONS_TO_DELETE.contains(name)) {
+                            result.add(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal("Available dimensions: " + result), false);
+        return 1;
     }
 
 }

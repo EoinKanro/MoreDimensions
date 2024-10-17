@@ -25,12 +25,16 @@ public class DimensionPath {
         .resolve(MOD_ID);
   }
 
+  public static Path getDatapackDimensionPath(MinecraftServer server) {
+    return getDatapackDataPath(server)
+        .resolve("dimension");
+  }
+
   /**
    * @return ./world/datapacks/moredimensions_dimensions/data/moredimensions/dimension/${dimensionName}.json
    */
   public static Path getDimensionJsonPath(MinecraftServer server, String dimensionName) {
-    return getDatapackDataPath(server)
-        .resolve("dimension")
+    return getDatapackDimensionPath(server)
         .resolve(dimensionName + ".json");
   }
 
