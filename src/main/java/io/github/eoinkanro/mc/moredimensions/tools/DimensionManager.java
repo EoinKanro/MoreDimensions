@@ -2,6 +2,7 @@ package io.github.eoinkanro.mc.moredimensions.tools;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.mojang.logging.LogUtils;
@@ -151,10 +152,22 @@ public class DimensionManager {
 
         Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
         if (Files.exists(toDeletePath)) {
+            Set<String> toDelete;
             try {
-                Set<String> toDelete = GSON.fromJson(GSON.toJson(Files.readString(toDeletePath)),
-                    TypeToken.getParameterized(Set.class, String.class).getType());
+                List<String> lines = Files.readAllLines(toDeletePath);
+                StringBuilder jsonBuilder = new StringBuilder();
+                lines.forEach(jsonBuilder::append);
 
+                JsonArray jsonArray = GSON.fromJson(jsonBuilder.toString(), JsonArray.class);
+                toDelete = GSON.fromJson(jsonArray, TypeToken.getParameterized(Set.class, String.class).getType());
+            } catch (Exception e) {
+                LOGGER.error("Critical error during deletion of dimensions. "
+                    + "Beware, they will not be deleted of startup. "
+                    + "You can try to delete them again and restart server normally.", e);
+                return;
+            }
+
+            try {
                 Set<String> undeleted = cleanDimensionsData(server, toDelete);
                 if (!undeleted.isEmpty()) {
                     LOGGER.error("Can't delete dimensions: {}", undeleted);
