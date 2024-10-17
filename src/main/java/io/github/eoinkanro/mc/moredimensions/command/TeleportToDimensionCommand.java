@@ -21,8 +21,6 @@ import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 public class TeleportToDimensionCommand {
 
   public static int perform(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-    //TODO TP TO OVERWORLD
-
     String name = StringArgumentType.getString(context, "name").toLowerCase()
         .replaceAll("[^a-z0-9_\\-]", "");
     CommandSourceStack source = context.getSource();
@@ -36,10 +34,14 @@ public class TeleportToDimensionCommand {
     ServerPlayer player = source.getPlayerOrException();
     MinecraftServer server = source.getServer();
 
-    ResourceLocation dimensionId = ResourceLocation.fromNamespaceAndPath(MOD_ID, name);
-    ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION,
-        dimensionId);
+    ResourceLocation dimensionId;
+    if (DimensionManager.OVERWORLD_NAMES.contains(name)) {
+      dimensionId = ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
+    } else {
+      dimensionId = ResourceLocation.fromNamespaceAndPath(MOD_ID, name);
+    }
 
+    ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, dimensionId);
     ServerLevel targetLevel = server.getLevel(dimensionKey);
 
     if (targetLevel != null) {
