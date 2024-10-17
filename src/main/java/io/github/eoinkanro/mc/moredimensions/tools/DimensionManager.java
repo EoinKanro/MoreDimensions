@@ -5,10 +5,15 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
+import java.io.File;
+import java.util.List;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.commands.CommandSourceStack;
@@ -17,6 +22,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import org.slf4j.Logger;
 
@@ -62,7 +70,7 @@ public class DimensionManager {
     private static JsonObject generateDimensionJson(MinecraftServer server, String dimensionName) {
         JsonObject dimensionJson = new JsonObject();
 
-        dimensionJson.addProperty("type", MOD_ID + ":" + dimensionName);
+        dimensionJson.addProperty("type", getFullDimensionName(dimensionName));
 
         JsonObject generator = new JsonObject();
         generator.addProperty("type", "minecraft:noise");
@@ -158,8 +166,78 @@ public class DimensionManager {
         return random.nextFloat(0, 1);
     }
 
-    public static int deleteDimension(MinecraftServer server, String name, CommandSourceStack source) {
-        return 0;
+    public static int deleteDimension(MinecraftServer server, String dimensionName, CommandSourceStack source) {
+        Path dimensionJsonPath = getDimensionJsonPath(server, dimensionName);
+        if (!Files.exists(dimensionJsonPath)) {
+            source.sendFailure(Component.literal("Dimension '" + dimensionName + "' does not exist."));
+            return 0;
+        }
+
+        tryToCloseDimension(server, dimensionName);
+
+        try {
+            deletePath(dimensionJsonPath);
+
+            Path dimensionTypeJsonPath = getDimensionTypeJsonPath(server, dimensionName);
+            deletePath(dimensionTypeJsonPath);
+
+            Path dimensionDataPath = getDimensionDataPath(server, dimensionName);
+            deletePath(dimensionDataPath);
+
+            source.sendSuccess(() -> Component.literal("Dimension '" + dimensionName + "' deleted. Please restart the server."), false);
+            return 1;
+        } catch (Exception e) {
+          LOGGER.error("Can't delete dimension '{}'.", dimensionName, e);
+            source.sendFailure(Component.literal("Can't delete dimension '" + dimensionName + "'."));
+            return 0;
+        }
+    }
+
+    private static void deletePath(Path path) throws IOException {
+        if (Files.exists(path)) {
+            deleteFileRecursive(path.toFile());
+        }
+    }
+
+    private static void deleteFileRecursive(File file) throws IOException {
+        if (file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    deleteFileRecursive(f);
+                }
+            }
+        }
+        file.delete();
+    }
+
+    private static void tryToCloseDimension(MinecraftServer server, String dimensionName) {
+        try {
+            ResourceLocation dimensionLocation = ResourceLocation.fromNamespaceAndPath(MOD_ID, dimensionName);
+            ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, dimensionLocation);
+
+            ServerLevel targetDimension = server.getLevel(dimensionKey);
+            List<ServerPlayer> playersInDimension = server.getPlayerList().getPlayers().stream()
+                .filter(player -> player.level() == targetDimension)
+                .toList();
+
+            ServerLevel overworld = server.getLevel(Level.OVERWORLD); // Overworld dimension
+            for (ServerPlayer player : playersInDimension) {
+                BlockPos spawnPos = overworld.getSharedSpawnPos();
+                float spawnAngle = overworld.getSharedSpawnAngle();
+
+                if (player.getRespawnDimension() == targetDimension.dimension()) {
+                    player.setRespawnPosition(Level.OVERWORLD, spawnPos, spawnAngle, false, false);
+                }
+
+                player.teleportTo(overworld, spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, spawnAngle, 0.0F);
+                player.sendSystemMessage(Component.literal("You have been teleported to the overworld."));
+            }
+
+            targetDimension.close();
+        } catch (Exception e) {
+            LOGGER.error("Failed to close dimension '{}'.", dimensionName, e);
+        }
     }
 
     private static Path getDatapackPath(MinecraftServer server) {
@@ -184,6 +262,17 @@ public class DimensionManager {
         return getDatapackDataPath(server)
             .resolve("dimension_type")
             .resolve(dimensionName + ".json");
+    }
+
+    private static Path getDimensionDataPath(MinecraftServer server, String dimensionName) {
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+            .resolve("dimensions")
+            .resolve(MOD_ID)
+            .resolve(dimensionName);
+    }
+
+    private static String getFullDimensionName(String dimensionName) {
+        return MOD_ID + ":" + dimensionName;
     }
 
     /**

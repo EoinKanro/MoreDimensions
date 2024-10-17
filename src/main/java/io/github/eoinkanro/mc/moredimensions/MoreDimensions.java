@@ -2,6 +2,7 @@ package io.github.eoinkanro.mc.moredimensions;
 
 import com.mojang.logging.LogUtils;
 import io.github.eoinkanro.mc.moredimensions.command.CreateDimensionCommand;
+import io.github.eoinkanro.mc.moredimensions.command.DeleteDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.command.TpDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
 import net.neoforged.bus.api.IEventBus;
@@ -37,6 +38,7 @@ public class MoreDimensions {
     public void onRegisterCommands(RegisterCommandsEvent event) {
         CreateDimensionCommand.register(event.getDispatcher());
         TpDimensionCommand.register(event.getDispatcher());
+        DeleteDimensionCommand.register(event.getDispatcher());
     }
 
 
