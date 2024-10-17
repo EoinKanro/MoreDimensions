@@ -175,6 +175,7 @@ public class DimensionManager {
 
                 DIMENSIONS_TO_DELETE.addAll(undeleted);
             } catch (Exception e) {
+                DIMENSIONS_TO_DELETE.addAll(toDelete);
                 LOGGER.error("Failed to clean dimensions from backup file.", e);
             }
         }
