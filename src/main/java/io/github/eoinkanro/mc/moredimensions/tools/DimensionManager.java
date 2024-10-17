@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.mojang.logging.LogUtils;
 import java.util.Set;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -17,25 +18,28 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
 import net.minecraft.world.level.biome.Biome;
+import org.slf4j.Logger;
 
 import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 
 public class DimensionManager {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
     private static final Set<String> FORBIDDEN_BIOMES = Set.of("minecraft:crimson_forest",
         "minecraft:end_midlands", "minecraft:nether_wastes", "minecraft:the_void", "minecraft:end_highlands",
         "minecraft:end_barrens", "minecraft:small_end_islands", "minecraft:the_end", "minecraft:soul_sand_valley",
         "minecraft:warped_forest");
 
 
-    public static boolean createDimension(MinecraftServer server, String name, CommandSourceStack source) {
+    public static int createDimension(MinecraftServer server, String name, CommandSourceStack source) {
         String dimensionName = name.toLowerCase().replaceAll("[^a-z0-9_\\-]", "");
 
         Path dimensionJsonPath = getDimensionJsonPath(server, dimensionName);
         if (Files.exists(dimensionJsonPath)) {
             source.sendFailure(Component.literal("Dimension '" + name + "' already exists."));
-            return false;
+            return 0;
         }
 
         try {
@@ -47,14 +51,11 @@ public class DimensionManager {
             Files.writeString(dimensionTypeJsonPath, GSON.toJson(generateDefaultDimensionType()));
 
             source.sendSuccess(() -> Component.literal("Dimension '" + name + "' created. Please restart the server to load the new dimension."), false);
-
-            return true;
-
+            return 1;
         } catch (IOException e) {
-            //TODO
-            e.printStackTrace();
+            LOGGER.error("Failed to create dimension '{}'.", name, e);
             source.sendFailure(Component.literal("Failed to create dimension '" + name + "'. See server log for details."));
-            return false;
+            return 0;
         }
     }
 
@@ -83,7 +84,7 @@ public class DimensionManager {
             }
 
             JsonObject biome = new JsonObject();
-            biome.addProperty("biome", biomeLocation.getNamespace() + ":" + biomeLocation.getPath());
+            biome.addProperty("biome", biomeName);
 
             JsonObject parameters = new JsonObject();
 
@@ -101,92 +102,9 @@ public class DimensionManager {
 
         biomeSource.add("biomes", biomes);
         generator.add("biome_source", biomeSource);
-
-        // Add the generator to the dimension JSON
         dimensionJson.add("generator", generator);
 
         return dimensionJson;
-    }
-
-    private static JsonArray createBiomeParameterRandomArray(Random random) {
-        JsonArray array = new JsonArray();
-        double first = getBiomeParameterRandom(random);
-        double second = getBiomeParameterRandom(random);
-
-        array.add(Math.min(first, second));
-        array.add(Math.max(first, second));
-        return array;
-    }
-
-    private static float getBiomeParameterRandom(Random random) {
-        return random.nextFloat(-2, 2);
-    }
-
-    private static float getBiomeOffsetRandom(Random random) {
-        return random.nextFloat(0, 1);
-    }
-
-    private static Path getDatapackPath(MinecraftServer server) {
-        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-                .resolve("datapacks")
-                .resolve(MOD_ID + "_dimensions");
-    }
-
-    private static Path getDatapackDataPath(MinecraftServer server) {
-        return getDatapackPath(server)
-                .resolve("data")
-                .resolve(MOD_ID);
-    }
-
-    private static Path getDimensionPath(MinecraftServer server) {
-        return getDatapackDataPath(server)
-                .resolve("dimension");
-    }
-
-    private static Path getDimensionTypePath(MinecraftServer server) {
-        return getDatapackDataPath(server)
-                .resolve("dimension_type");
-    }
-
-    private static Path getDimensionJsonPath(MinecraftServer server, String dimensionName) {
-        return getDimensionPath(server)
-                .resolve(dimensionName + ".json");
-    }
-
-    private static Path getDimensionTypeJsonPath(MinecraftServer server, String dimensionName) {
-        return getDimensionTypePath(server)
-            .resolve(dimensionName + ".json");
-    }
-
-    /**
-     * Create default files for future dimensions
-     */
-    public static void init(MinecraftServer server) throws IOException {
-        Path datapackPath = getDatapackPath(server);
-        if (!Files.exists(datapackPath)) {
-            Files.createDirectories(datapackPath);
-        }
-
-        Path packMcmetaPath = datapackPath.resolve("pack.mcmeta");
-        if (!Files.exists(packMcmetaPath)) {
-            Files.createFile(packMcmetaPath);
-            Files.writeString(packMcmetaPath, GSON.toJson(generatePackMcmeta()));
-        }
-    }
-
-    /**
-     * File that is necessary for loading the datapack
-     */
-    private static JsonObject generatePackMcmeta() {
-        JsonObject packMcmeta = new JsonObject();
-
-        JsonObject pack = new JsonObject();
-        pack.addProperty("description", "More Dimensions worlds");
-        pack.addProperty("pack_format", 48);
-
-        packMcmeta.add("pack", pack);
-
-        return packMcmeta;
     }
 
     /**
@@ -220,6 +138,83 @@ public class DimensionManager {
         defaultDimensionType.add("monster_spawn_light_level", monsterSpawnLightLevel);
 
         return defaultDimensionType;
+    }
+
+    private static JsonArray createBiomeParameterRandomArray(Random random) {
+        JsonArray array = new JsonArray();
+        double first = getBiomeParameterRandom(random);
+        double second = getBiomeParameterRandom(random);
+
+        array.add(Math.min(first, second));
+        array.add(Math.max(first, second));
+        return array;
+    }
+
+    private static float getBiomeParameterRandom(Random random) {
+        return random.nextFloat(-2, 2);
+    }
+
+    private static float getBiomeOffsetRandom(Random random) {
+        return random.nextFloat(0, 1);
+    }
+
+    public static int deleteDimension(MinecraftServer server, String name, CommandSourceStack source) {
+        return 0;
+    }
+
+    private static Path getDatapackPath(MinecraftServer server) {
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("datapacks")
+                .resolve(MOD_ID + "_dimensions");
+    }
+
+    private static Path getDatapackDataPath(MinecraftServer server) {
+        return getDatapackPath(server)
+                .resolve("data")
+                .resolve(MOD_ID);
+    }
+
+    private static Path getDimensionJsonPath(MinecraftServer server, String dimensionName) {
+        return getDatapackDataPath(server)
+                .resolve("dimension")
+                .resolve(dimensionName + ".json");
+    }
+
+    private static Path getDimensionTypeJsonPath(MinecraftServer server, String dimensionName) {
+        return getDatapackDataPath(server)
+            .resolve("dimension_type")
+            .resolve(dimensionName + ".json");
+    }
+
+    /**
+     * Create datapack folder and pack.mcmeta file
+     */
+    public static void init(MinecraftServer server) throws IOException {
+        Path datapackPath = getDatapackPath(server);
+        if (!Files.exists(datapackPath)) {
+            Files.createDirectories(datapackPath);
+        }
+
+        Path packMcmetaPath = datapackPath.resolve("pack.mcmeta");
+        if (!Files.exists(packMcmetaPath)) {
+            Files.createFile(packMcmetaPath);
+            Files.writeString(packMcmetaPath, GSON.toJson(generatePackMcmeta()));
+        }
+    }
+
+    /**
+     * File that is necessary for loading the datapack
+     */
+    private static JsonObject generatePackMcmeta() {
+        JsonObject packMcmeta = new JsonObject();
+
+        JsonObject pack = new JsonObject();
+        pack.addProperty("description", "More Dimensions worlds");
+        pack.addProperty("pack_format", 48);
+
+        packMcmeta.add("pack", pack);
+
+        return packMcmeta;
     }
 
 }

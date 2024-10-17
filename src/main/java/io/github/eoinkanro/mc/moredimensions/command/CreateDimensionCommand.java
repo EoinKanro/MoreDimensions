@@ -17,9 +17,7 @@ public class CreateDimensionCommand {
                   String name = StringArgumentType.getString(context, "name");
                   MinecraftServer server = context.getSource().getServer();
 
-                  boolean success = DimensionManager.createDimension(server, name, context.getSource());
-
-                  return success ? 1 : 0;
+                  return DimensionManager.createDimension(server, name, context.getSource());
                 }))
     );
   }
