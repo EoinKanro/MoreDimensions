@@ -15,7 +15,7 @@ When creating a new dimension, the generator can use all available biomes, even 
 
 Admin commands:
 - `/moredim create <name> <type>` - create mode dimension
-  - type `random` - creates totally random dimension using biomes from mods (could be buggy)
+  - type `random` - creates totally random dimension using biomes from mods (can be buggy)
   - type `overworld` - creates dimension using preset `minecraft:overworld`
 - `/moredim delete <name>` - delete mode dimension
 
