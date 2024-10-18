@@ -33,6 +33,7 @@ public class DimensionManager {
 
     public static final Set<String> OVERWORLD_NAMES = Set.of("overworld", "main");
 
+
     private final Logger log = LogUtils.getLogger();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
@@ -63,7 +64,7 @@ public class DimensionManager {
     /**
      * Create files of dimension in datapack folder
      */
-    public synchronized ActionResponse createDimension(MinecraftServer server, String name) {
+    public synchronized ActionResponse createDimension(MinecraftServer server, String name, GeneratorType type) {
         String dimensionName = toDimensionName(name);
 
         if (dimensionsToDelete.contains(dimensionName)) {
@@ -76,14 +77,18 @@ public class DimensionManager {
         }
 
         try {
+            JsonObject dimensionJson = type == GeneratorType.OVERWORLD ?
+                DimensionGenerator.generateOverworldDimensionJson(name)
+                : DimensionGenerator.generateRandomDimensionJson(server, name, excludedBiomes);
+
             Path dimensionTypeJsonPath = DimensionPaths.getDimensionTypeJsonPath(server, dimensionName);
             Files.createDirectories(dimensionTypeJsonPath.getParent());
             Files.writeString(dimensionTypeJsonPath, gson.toJson(DimensionGenerator.generateDimensionType()));
 
             Files.createDirectories(dimensionJsonPath.getParent());
-            Files.writeString(dimensionJsonPath, gson.toJson(DimensionGenerator.generateDimensionJson(server, dimensionName, excludedBiomes)));
+            Files.writeString(dimensionJsonPath, gson.toJson(dimensionJson));
 
-            return new ActionResponse(1, "Dimension '" + dimensionName + "' created. Please restart the server to load the new dimension.");
+            return new ActionResponse(1, "Dimension with type '" + type + "' and name '" + dimensionName + "' created. Please restart the server to load the new dimension.");
         } catch (IOException e) {
             log.error("Failed to create dimension '{}'.", name, e);
             return new ActionResponse(0, "Failed to create dimension '" + dimensionName + "'. See server log for details.");

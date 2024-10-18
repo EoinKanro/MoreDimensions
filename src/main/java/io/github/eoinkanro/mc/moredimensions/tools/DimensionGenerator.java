@@ -19,10 +19,29 @@ public class DimensionGenerator {
       "minecraft:end_barrens", "minecraft:small_end_islands", "minecraft:the_end", "minecraft:soul_sand_valley",
       "minecraft:warped_forest");
 
+  public static JsonObject generateOverworldDimensionJson(String dimensionName) {
+    JsonObject dimensionJson = new JsonObject();
+
+    dimensionJson.addProperty("type", getFullDimensionName(dimensionName));
+
+    JsonObject generator = new JsonObject();
+    generator.addProperty("type", "minecraft:noise");
+    generator.addProperty("settings", "minecraft:overworld");
+
+    JsonObject biomeSource = new JsonObject();
+    biomeSource.addProperty("type", "minecraft:multi_noise");
+    biomeSource.addProperty("preset", "minecraft:overworld");
+
+    generator.add("biome_source", biomeSource);
+    dimensionJson.add("generator", generator);
+
+    return dimensionJson;
+  }
+
   /**
-   * Random overworld dimension JSON
+   * Random dimension JSON
    */
-  public static JsonObject generateDimensionJson(MinecraftServer server, String dimensionName,
+  public static JsonObject generateRandomDimensionJson(MinecraftServer server, String dimensionName,
       Set<String> excludedBiomes) {
     JsonObject dimensionJson = new JsonObject();
 
@@ -32,7 +51,6 @@ public class DimensionGenerator {
     generator.addProperty("type", "minecraft:noise");
     generator.addProperty("settings", "minecraft:overworld");
 
-    // Set the biome source
     JsonObject biomeSource = new JsonObject();
     biomeSource.addProperty("type", "minecraft:multi_noise");
 

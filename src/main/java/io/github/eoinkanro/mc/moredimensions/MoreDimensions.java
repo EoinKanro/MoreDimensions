@@ -1,13 +1,23 @@
 package io.github.eoinkanro.mc.moredimensions;
 
+import static io.github.eoinkanro.mc.moredimensions.command.AbstractNamedCommand.NAME_FIELD;
+import static io.github.eoinkanro.mc.moredimensions.command.CreateDimensionCommand.TYPE_FIELD;
+
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.logging.LogUtils;
 import io.github.eoinkanro.mc.moredimensions.command.CreateDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.command.DeleteDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.command.ListDimensionsCommand;
 import io.github.eoinkanro.mc.moredimensions.command.TeleportToDimensionCommand;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
+import io.github.eoinkanro.mc.moredimensions.tools.GeneratorType;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -56,21 +66,33 @@ public class MoreDimensions {
 
   @SubscribeEvent
   public void onRegisterCommands(RegisterCommandsEvent event) {
+    Set<String> createSuggestionsSet = Stream
+        .concat(GeneratorType.OVERWORLD.getNames().stream(),
+            GeneratorType.RANDOM.getNames().stream())
+        .collect(Collectors.toSet());
+
+    SuggestionProvider<CommandSourceStack> createSuggestions = (context, builder) ->
+        SharedSuggestionProvider.suggest(createSuggestionsSet, builder);
+
     event.getDispatcher().register(
         Commands.literal(COMMAND_ID)
             .then(
                 Commands.literal("create")
                     .requires(source -> source.hasPermission(3))
                     .then(
-                        Commands.argument("name", StringArgumentType.string())
-                            .executes(createDimensionCommand::perform)
+                        Commands.argument(NAME_FIELD, StringArgumentType.string())
+                            .then(
+                                Commands.argument(TYPE_FIELD, StringArgumentType.word())
+                                    .suggests(createSuggestions)
+                                    .executes(createDimensionCommand::perform)
+                            )
                     )
             )
             .then(
                 Commands.literal("delete")
                     .requires(source -> source.hasPermission(3))
                     .then(
-                        Commands.argument("name", StringArgumentType.string())
+                        Commands.argument(NAME_FIELD, StringArgumentType.string())
                             .executes(deleteDimensionCommand::perform)
                     )
             ).then(
