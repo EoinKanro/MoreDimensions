@@ -69,6 +69,9 @@ public class DimensionPaths {
         .resolve("toDelete.json");
   }
 
+  /**
+   * @return ./world/datapacks/moredimensions_dimensions/exclude.json
+   */
   public static Path getConfigExcludePath(MinecraftServer server) {
     return getDatapackPath(server)
         .resolve("exclude.json");
