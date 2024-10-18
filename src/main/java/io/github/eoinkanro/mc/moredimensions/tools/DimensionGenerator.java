@@ -22,7 +22,8 @@ public class DimensionGenerator {
   /**
    * Random overworld dimension JSON
    */
-  public static JsonObject generateDimensionJson(MinecraftServer server, String dimensionName) {
+  public static JsonObject generateDimensionJson(MinecraftServer server, String dimensionName,
+      Set<String> excludedBiomes) {
     JsonObject dimensionJson = new JsonObject();
 
     dimensionJson.addProperty("type", getFullDimensionName(dimensionName));
@@ -42,7 +43,7 @@ public class DimensionGenerator {
     Random random = new Random();
     biomeRegistry.keySet().forEach(biomeLocation -> {
       String biomeName = biomeLocation.getNamespace() + ":" + biomeLocation.getPath();
-      if (FORBIDDEN_BIOMES.contains(biomeName)) {
+      if (FORBIDDEN_BIOMES.contains(biomeName) || excludedBiomes.contains(biomeName)) {
         return;
       }
 

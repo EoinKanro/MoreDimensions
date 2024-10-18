@@ -36,7 +36,15 @@ public class DimensionManager {
     private final Logger log = LogUtils.getLogger();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
+    /**
+     * Short names without ....:
+     */
     private final Set<String> dimensionsToDelete = new HashSet<>();
+
+    /**
+     * Full names like minecraft:forest
+     */
+    private final Set<String> excludedBiomes = new HashSet<>();
 
     /**
      * Transform short name of dimension to MC friendly format
@@ -62,18 +70,18 @@ public class DimensionManager {
             return new ActionResponse(0, "Dimension '" + dimensionName + "' marked for deletion.");
         }
 
-        Path dimensionJsonPath = DimensionPath.getDimensionJsonPath(server, dimensionName);
+        Path dimensionJsonPath = DimensionPaths.getDimensionJsonPath(server, dimensionName);
         if (Files.exists(dimensionJsonPath)) {
             return new ActionResponse(0, "Dimension '" + dimensionName + "' already exists.");
         }
 
         try {
-            Path dimensionTypeJsonPath = DimensionPath.getDimensionTypeJsonPath(server, dimensionName);
+            Path dimensionTypeJsonPath = DimensionPaths.getDimensionTypeJsonPath(server, dimensionName);
             Files.createDirectories(dimensionTypeJsonPath.getParent());
             Files.writeString(dimensionTypeJsonPath, gson.toJson(DimensionGenerator.generateDimensionType()));
 
             Files.createDirectories(dimensionJsonPath.getParent());
-            Files.writeString(dimensionJsonPath, gson.toJson(DimensionGenerator.generateDimensionJson(server, dimensionName)));
+            Files.writeString(dimensionJsonPath, gson.toJson(DimensionGenerator.generateDimensionJson(server, dimensionName, excludedBiomes)));
 
             return new ActionResponse(1, "Dimension '" + dimensionName + "' created. Please restart the server to load the new dimension.");
         } catch (IOException e) {
@@ -93,7 +101,7 @@ public class DimensionManager {
             return new ActionResponse(0, "Dimension '" + dimensionName + "' has been marked for deletion already.");
         }
 
-        Path dimensionJsonPath = DimensionPath.getDimensionJsonPath(server, dimensionName);
+        Path dimensionJsonPath = DimensionPaths.getDimensionJsonPath(server, dimensionName);
         if (!Files.exists(dimensionJsonPath)) {
             return new ActionResponse(0, "Dimension '" + dimensionName + "' does not exist.");
         }
@@ -101,7 +109,7 @@ public class DimensionManager {
         teleportPlayersFromDimension(server, dimensionName);
         dimensionsToDelete.add(dimensionName);
 
-        Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
+        Path toDeletePath = DimensionPaths.getPathToDeleteJson(server);
         try {
             if (!Files.exists(toDeletePath)) {
                 Files.createDirectories(toDeletePath.getParent());
@@ -152,7 +160,7 @@ public class DimensionManager {
     public ActionResponse getAllDimensions(MinecraftServer server) {
         List<String> result = new ArrayList<>(OVERWORLD_NAMES);
 
-        Path dimensionsPath = DimensionPath.getDatapackDimensionPath(server);
+        Path dimensionsPath = DimensionPaths.getDatapackDimensionPath(server);
         if (Files.exists(dimensionsPath)) {
             File dimensionsFile = dimensionsPath.toFile();
 
@@ -176,10 +184,11 @@ public class DimensionManager {
     /**
      * Create datapack folder and pack.mcmeta file
      * Try to delete dimensions data from file if exists
+     * Add try to read exclude file
      */
     public void init(MinecraftServer server) throws IOException {
         log.info("Initializing DimensionManager...");
-        Path datapackPath = DimensionPath.getDatapackPath(server);
+        Path datapackPath = DimensionPaths.getDatapackPath(server);
         if (!Files.exists(datapackPath)) {
             Files.createDirectories(datapackPath);
         }
@@ -190,35 +199,60 @@ public class DimensionManager {
             Files.writeString(packMcmetaPath, gson.toJson(generatePackMcmeta()));
         }
 
-        Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
-        if (Files.exists(toDeletePath)) {
-            Set<String> toDelete;
-            try {
-                List<String> lines = Files.readAllLines(toDeletePath);
-                StringBuilder jsonBuilder = new StringBuilder();
-                lines.forEach(jsonBuilder::append);
+        tryToDeleteOnInit(server);
+        tryToAddExcludeBiomes(server);
+    }
 
-                JsonArray jsonArray = gson.fromJson(jsonBuilder.toString(), JsonArray.class);
-                toDelete = gson.fromJson(jsonArray, TypeToken.getParameterized(Set.class, String.class).getType());
-            } catch (Exception e) {
-                log.error("Critical error during deletion of dimensions. "
-                    + "Beware, they will not be deleted of startup. "
-                    + "You can try to delete them again and restart server normally.", e);
-                return;
-            }
-
-            try {
-                Set<String> undeleted = cleanDimensionsData(server, toDelete);
-                if (!undeleted.isEmpty()) {
-                    log.error("Can't delete dimensions: {}", undeleted);
-                }
-
-                dimensionsToDelete.addAll(undeleted);
-            } catch (Exception e) {
-                dimensionsToDelete.addAll(toDelete);
-                log.error("Failed to clean dimensions from backup file.", e);
-            }
+    private void tryToDeleteOnInit(MinecraftServer server) {
+        Path toDeletePath = DimensionPaths.getPathToDeleteJson(server);
+        if (!Files.exists(toDeletePath)) {
+            return;
         }
+
+        Set<String> toDelete;
+        try {
+            toDelete = pathToSet(toDeletePath);
+        } catch (Exception e) {
+            log.error("Critical error during deletion of dimensions. "
+                + "Beware, they will not be deleted of startup. "
+                + "You can try to delete them again and restart server normally.", e);
+            return;
+        }
+
+        try {
+            Set<String> undeleted = cleanDimensionsData(server, toDelete);
+            if (!undeleted.isEmpty()) {
+                log.error("Can't delete dimensions: {}", undeleted);
+            }
+
+            dimensionsToDelete.addAll(undeleted);
+        } catch (Exception e) {
+            dimensionsToDelete.addAll(toDelete);
+            log.error("Failed to clean dimensions from backup file.", e);
+        }
+    }
+
+    private void tryToAddExcludeBiomes(MinecraftServer server) {
+        Path excludePath = DimensionPaths.getConfigExcludePath(server);
+        if (!Files.exists(excludePath)) {
+            return;
+        }
+
+        try {
+            excludedBiomes.addAll(pathToSet(excludePath));
+            log.info("Added biomes for exclusion: {}", excludedBiomes);
+        } catch (Exception e) {
+            log.error("Can't load file for exclusion", e);
+        }
+    }
+
+    private Set<String> pathToSet(Path path) throws IOException {
+        List<String> lines = Files.readAllLines(path);
+        StringBuilder jsonBuilder = new StringBuilder();
+        lines.forEach(jsonBuilder::append);
+
+        JsonArray jsonArray = gson.fromJson(jsonBuilder.toString(), JsonArray.class);
+        return gson.fromJson(jsonArray, TypeToken.getParameterized(Set.class, String.class).getType());
     }
 
     /**
@@ -255,13 +289,13 @@ public class DimensionManager {
         Set<String> toDelete = new HashSet<>();
         for (String dimensionName : dimensions) {
             try {
-                Path dimensionJsonPath = DimensionPath.getDimensionJsonPath(server, dimensionName);
+                Path dimensionJsonPath = DimensionPaths.getDimensionJsonPath(server, dimensionName);
                 deletePath(dimensionJsonPath);
 
-                Path dimensionTypeJsonPath = DimensionPath.getDimensionTypeJsonPath(server, dimensionName);
+                Path dimensionTypeJsonPath = DimensionPaths.getDimensionTypeJsonPath(server, dimensionName);
                 deletePath(dimensionTypeJsonPath);
 
-                Path dimensionDataPath = DimensionPath.getDimensionDataPath(server, dimensionName);
+                Path dimensionDataPath = DimensionPaths.getDimensionDataPath(server, dimensionName);
                 deletePath(dimensionDataPath);
 
                 log.info("Dimension '{}' deleted", dimensionName);
@@ -272,7 +306,7 @@ public class DimensionManager {
         }
 
         if (toDelete.isEmpty()) {
-            Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
+            Path toDeletePath = DimensionPaths.getPathToDeleteJson(server);
             try {
                 Files.deleteIfExists(toDeletePath);
             } catch (Exception e) {

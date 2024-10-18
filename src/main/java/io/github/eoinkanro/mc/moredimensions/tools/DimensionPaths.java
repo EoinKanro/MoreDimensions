@@ -5,7 +5,7 @@ import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 import java.nio.file.Path;
 import net.minecraft.server.MinecraftServer;
 
-public class DimensionPath {
+public class DimensionPaths {
 
   /**
    * @return ./world/datapacks/moredimensions_dimensions
@@ -67,6 +67,11 @@ public class DimensionPath {
   public static Path getPathToDeleteJson(MinecraftServer server) {
     return getDatapackPath(server)
         .resolve("toDelete.json");
+  }
+
+  public static Path getConfigExcludePath(MinecraftServer server) {
+    return getDatapackPath(server)
+        .resolve("exclude.json");
   }
 
 }
