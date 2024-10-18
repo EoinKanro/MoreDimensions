@@ -1,15 +1,19 @@
 package io.github.eoinkanro.mc.moredimensions.command;
 
 import com.mojang.brigadier.context.CommandContext;
+import io.github.eoinkanro.mc.moredimensions.tools.ActionResponse;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.server.MinecraftServer;
 
-public class ListDimensionsCommand {
+public class ListDimensionsCommand extends AbstractCommand {
 
-  public static int perform(CommandContext<CommandSourceStack> context) {
-    MinecraftServer server = context.getSource().getServer();
-    return DimensionManager.getAllDimensions(server, context.getSource());
+  public ListDimensionsCommand(DimensionManager dimensionManager) {
+    super(dimensionManager);
+  }
+
+  @Override
+  protected ActionResponse process(CommandContext<CommandSourceStack> context) {
+    return dimensionManager.getAllDimensions(context.getSource().getServer());
   }
 
 }

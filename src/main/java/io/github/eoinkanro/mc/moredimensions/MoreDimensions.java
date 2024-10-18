@@ -25,6 +25,12 @@ public class MoreDimensions {
   public static final String MOD_ID = "moredimensions";
   public static final String COMMAND_ID = "moredim";
 
+  private final DimensionManager dimensionManager = new DimensionManager();
+  private final CreateDimensionCommand createDimensionCommand = new CreateDimensionCommand(dimensionManager);
+  private final DeleteDimensionCommand deleteDimensionCommand = new DeleteDimensionCommand(dimensionManager);
+  private final ListDimensionsCommand listDimensionsCommand = new ListDimensionsCommand(dimensionManager);
+  private final TeleportToDimensionCommand teleportToDimensionCommand = new TeleportToDimensionCommand(dimensionManager);
+
   // Valid constructor, only uses two of the available argument types
   public MoreDimensions(IEventBus modBus, ModContainer container) {
     NeoForge.EVENT_BUS.register(this);
@@ -33,7 +39,7 @@ public class MoreDimensions {
   @SubscribeEvent
   public void onServerAboutToStart(ServerAboutToStartEvent event) {
     try {
-      DimensionManager.init(event.getServer());
+      dimensionManager.init(event.getServer());
     } catch (Exception e) {
       LOGGER.error("Failed to initialize DimensionManager", e);
     }
@@ -42,7 +48,7 @@ public class MoreDimensions {
   @SubscribeEvent
   public void onServerStopped(ServerStoppedEvent event) {
     try {
-      DimensionManager.stop(event.getServer());
+      dimensionManager.stop(event.getServer());
     } catch (Exception e) {
       LOGGER.error("Failed to stop DimensionManager", e);
     }
@@ -57,7 +63,7 @@ public class MoreDimensions {
                     .requires(source -> source.hasPermission(3))
                     .then(
                         Commands.argument("name", StringArgumentType.string())
-                            .executes(CreateDimensionCommand::perform)
+                            .executes(createDimensionCommand::perform)
                     )
             )
             .then(
@@ -65,18 +71,18 @@ public class MoreDimensions {
                     .requires(source -> source.hasPermission(3))
                     .then(
                         Commands.argument("name", StringArgumentType.string())
-                            .executes(DeleteDimensionCommand::perform)
+                            .executes(deleteDimensionCommand::perform)
                     )
             ).then(
                 Commands.literal("tp")
                     .then(
                         Commands.argument("name", StringArgumentType.string())
-                            .executes(TeleportToDimensionCommand::perform)
+                            .executes(teleportToDimensionCommand::perform)
                     )
             )
             .then(
                 Commands.literal("list")
-                    .executes(ListDimensionsCommand::perform)
+                    .executes(listDimensionsCommand::perform)
             )
     );
   }

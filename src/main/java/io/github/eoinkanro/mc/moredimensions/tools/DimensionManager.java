@@ -18,7 +18,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.chat.Component;
-import net.minecraft.commands.CommandSourceStack;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,62 +31,75 @@ import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 
 public class DimensionManager {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-
-    private static final Set<String> DIMENSIONS_TO_DELETE = new HashSet<>();
-
     public static final Set<String> OVERWORLD_NAMES = Set.of("overworld", "main");
 
-    public static boolean isDimensionAvailable(String dimensionName) {
-        return !DIMENSIONS_TO_DELETE.contains(dimensionName);
+    private final Logger log = LogUtils.getLogger();
+    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+
+    private final Set<String> dimensionsToDelete = new HashSet<>();
+
+    /**
+     * Transform short name of dimension to MC friendly format
+     */
+    public String toDimensionName(String name) {
+        return name.toLowerCase().replaceAll("[^a-z0-9_\\-]", "");
     }
 
-    public static int createDimension(MinecraftServer server, String name, CommandSourceStack source) {
-        String dimensionName = name.toLowerCase().replaceAll("[^a-z0-9_\\-]", "");
+    /**
+     * If dimensions doesn't mark for deletion
+     */
+    public boolean isDimensionAvailable(String dimensionName) {
+        return !dimensionsToDelete.contains(dimensionName);
+    }
 
-        if (DIMENSIONS_TO_DELETE.contains(dimensionName)) {
-            source.sendFailure(Component.literal("Dimension '" + name + "' marked for deletion."));
-            return 0;
+    /**
+     * Create files of dimension in datapack folder
+     */
+    public synchronized ActionResponse createDimension(MinecraftServer server, String name) {
+        String dimensionName = toDimensionName(name);
+
+        if (dimensionsToDelete.contains(dimensionName)) {
+            return new ActionResponse(0, "Dimension '" + dimensionName + "' marked for deletion.");
         }
 
         Path dimensionJsonPath = DimensionPath.getDimensionJsonPath(server, dimensionName);
         if (Files.exists(dimensionJsonPath)) {
-            source.sendFailure(Component.literal("Dimension '" + name + "' already exists."));
-            return 0;
+            return new ActionResponse(0, "Dimension '" + dimensionName + "' already exists.");
         }
 
         try {
             Path dimensionTypeJsonPath = DimensionPath.getDimensionTypeJsonPath(server, dimensionName);
             Files.createDirectories(dimensionTypeJsonPath.getParent());
-            Files.writeString(dimensionTypeJsonPath, GSON.toJson(DimensionGenerator.generateDimensionType()));
+            Files.writeString(dimensionTypeJsonPath, gson.toJson(DimensionGenerator.generateDimensionType()));
 
             Files.createDirectories(dimensionJsonPath.getParent());
-            Files.writeString(dimensionJsonPath, GSON.toJson(DimensionGenerator.generateDimensionJson(server, dimensionName)));
+            Files.writeString(dimensionJsonPath, gson.toJson(DimensionGenerator.generateDimensionJson(server, dimensionName)));
 
-            source.sendSuccess(() -> Component.literal("Dimension '" + name + "' created. Please restart the server to load the new dimension."), false);
-            return 1;
+            return new ActionResponse(1, "Dimension '" + dimensionName + "' created. Please restart the server to load the new dimension.");
         } catch (IOException e) {
-            LOGGER.error("Failed to create dimension '{}'.", name, e);
-            source.sendFailure(Component.literal("Failed to create dimension '" + name + "'. See server log for details."));
-            return 0;
+            log.error("Failed to create dimension '{}'.", name, e);
+            return new ActionResponse(0, "Failed to create dimension '" + dimensionName + "'. See server log for details.");
         }
     }
 
-    public static int deleteDimension(MinecraftServer server, String dimensionName, CommandSourceStack source) {
-        if (DIMENSIONS_TO_DELETE.contains(dimensionName)) {
-            source.sendFailure(Component.literal("Dimension '" + dimensionName + "' has been marked for deletion already."));
-            return 0;
+    /**
+     * Mark dimension for deletion on server shutdown.
+     * Create file with dimensions for deletion to try to delete after restart if server crushes.
+     * Teleport all players from the dimension.
+     */
+    public synchronized ActionResponse deleteDimension(MinecraftServer server, String name) {
+        String dimensionName = toDimensionName(name);
+        if (dimensionsToDelete.contains(dimensionName)) {
+            return new ActionResponse(0, "Dimension '" + dimensionName + "' has been marked for deletion already.");
         }
 
         Path dimensionJsonPath = DimensionPath.getDimensionJsonPath(server, dimensionName);
         if (!Files.exists(dimensionJsonPath)) {
-            source.sendFailure(Component.literal("Dimension '" + dimensionName + "' does not exist."));
-            return 0;
+            return new ActionResponse(0, "Dimension '" + dimensionName + "' does not exist.");
         }
 
         teleportPlayersFromDimension(server, dimensionName);
-        DIMENSIONS_TO_DELETE.add(dimensionName);
+        dimensionsToDelete.add(dimensionName);
 
         Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
         try {
@@ -97,19 +109,17 @@ public class DimensionManager {
             }
 
             try (FileWriter fileWriter = new FileWriter(toDeletePath.toFile(), false)) {
-                fileWriter.write(GSON.toJson(DIMENSIONS_TO_DELETE));
+                fileWriter.write(gson.toJson(dimensionsToDelete));
                 fileWriter.flush();
             }
         } catch (Exception e) {
-            LOGGER.warn("Failed to save dimensions fro deletion to file", e);
+            log.warn("Failed to save dimensions for deletion to file", e);
         }
 
-        source.sendSuccess(() -> Component.literal("Dimension '" + dimensionName + "' will be deleted on restart. "
-            + "Please restart the server."), false);
-        return 1;
+        return new ActionResponse(1, "Dimension '" + dimensionName + "' will be deleted on restart.");
     }
 
-    private static void teleportPlayersFromDimension(MinecraftServer server, String dimensionName) {
+    private void teleportPlayersFromDimension(MinecraftServer server, String dimensionName) {
         try {
             ResourceLocation dimensionLocation = ResourceLocation.fromNamespaceAndPath(MOD_ID, dimensionName);
             ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, dimensionLocation);
@@ -132,16 +142,43 @@ public class DimensionManager {
                 player.sendSystemMessage(Component.literal("You have been teleported to the overworld."));
             }
         } catch (Exception e) {
-            LOGGER.error("Failed to teleport player from dimension '{}'.", dimensionName, e);
+            log.error("Failed to teleport player from dimension '{}'.", dimensionName, e);
         }
+    }
+
+    /**
+     * Get list of all available dimensions except for dimensions for deletion
+     */
+    public ActionResponse getAllDimensions(MinecraftServer server) {
+        List<String> result = new ArrayList<>(OVERWORLD_NAMES);
+
+        Path dimensionsPath = DimensionPath.getDatapackDimensionPath(server);
+        if (Files.exists(dimensionsPath)) {
+            File dimensionsFile = dimensionsPath.toFile();
+
+            File[] files = dimensionsFile.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile() && file.getName().endsWith(".json")) {
+                        String name = file.getName().replaceAll(".json", "");
+
+                        if (!dimensionsToDelete.contains(name)) {
+                            result.add(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        return new ActionResponse(1, "Available dimensions: " + result);
     }
 
     /**
      * Create datapack folder and pack.mcmeta file
      * Try to delete dimensions data from file if exists
      */
-    public static void init(MinecraftServer server) throws IOException {
-        LOGGER.info("Initializing DimensionManager...");
+    public void init(MinecraftServer server) throws IOException {
+        log.info("Initializing DimensionManager...");
         Path datapackPath = DimensionPath.getDatapackPath(server);
         if (!Files.exists(datapackPath)) {
             Files.createDirectories(datapackPath);
@@ -150,7 +187,7 @@ public class DimensionManager {
         Path packMcmetaPath = datapackPath.resolve("pack.mcmeta");
         if (!Files.exists(packMcmetaPath)) {
             Files.createFile(packMcmetaPath);
-            Files.writeString(packMcmetaPath, GSON.toJson(generatePackMcmeta()));
+            Files.writeString(packMcmetaPath, gson.toJson(generatePackMcmeta()));
         }
 
         Path toDeletePath = DimensionPath.getPathToDeleteJson(server);
@@ -161,10 +198,10 @@ public class DimensionManager {
                 StringBuilder jsonBuilder = new StringBuilder();
                 lines.forEach(jsonBuilder::append);
 
-                JsonArray jsonArray = GSON.fromJson(jsonBuilder.toString(), JsonArray.class);
-                toDelete = GSON.fromJson(jsonArray, TypeToken.getParameterized(Set.class, String.class).getType());
+                JsonArray jsonArray = gson.fromJson(jsonBuilder.toString(), JsonArray.class);
+                toDelete = gson.fromJson(jsonArray, TypeToken.getParameterized(Set.class, String.class).getType());
             } catch (Exception e) {
-                LOGGER.error("Critical error during deletion of dimensions. "
+                log.error("Critical error during deletion of dimensions. "
                     + "Beware, they will not be deleted of startup. "
                     + "You can try to delete them again and restart server normally.", e);
                 return;
@@ -173,13 +210,13 @@ public class DimensionManager {
             try {
                 Set<String> undeleted = cleanDimensionsData(server, toDelete);
                 if (!undeleted.isEmpty()) {
-                    LOGGER.error("Can't delete dimensions: {}", undeleted);
+                    log.error("Can't delete dimensions: {}", undeleted);
                 }
 
-                DIMENSIONS_TO_DELETE.addAll(undeleted);
+                dimensionsToDelete.addAll(undeleted);
             } catch (Exception e) {
-                DIMENSIONS_TO_DELETE.addAll(toDelete);
-                LOGGER.error("Failed to clean dimensions from backup file.", e);
+                dimensionsToDelete.addAll(toDelete);
+                log.error("Failed to clean dimensions from backup file.", e);
             }
         }
     }
@@ -187,7 +224,7 @@ public class DimensionManager {
     /**
      * File that is necessary for loading the datapack
      */
-    private static JsonObject generatePackMcmeta() {
+    private JsonObject generatePackMcmeta() {
         JsonObject packMcmeta = new JsonObject();
 
         JsonObject pack = new JsonObject();
@@ -199,18 +236,21 @@ public class DimensionManager {
         return packMcmeta;
     }
 
-    public static void stop(MinecraftServer server) {
-        LOGGER.info("Stopping DimensionManager...");
-        cleanDimensionsData(server, DIMENSIONS_TO_DELETE);
+    /**
+     * Try to delete marked dimensions
+     */
+    public void stop(MinecraftServer server) {
+        log.info("Stopping DimensionManager...");
+        cleanDimensionsData(server, dimensionsToDelete);
     }
 
     /**
-     * Delete data of marked for deletion dimensions
+     * Delete data of marked dimensions for deletion
      *
-     * @return dimensions that can't delete
+     * @return dimensions that can't be deleted
      */
-    private static Set<String> cleanDimensionsData(MinecraftServer server, Set<String> dimensions) {
-        LOGGER.info("Deleting dimensions data...");
+    private Set<String> cleanDimensionsData(MinecraftServer server, Set<String> dimensions) {
+        log.info("Deleting dimensions data...");
 
         Set<String> toDelete = new HashSet<>();
         for (String dimensionName : dimensions) {
@@ -224,9 +264,9 @@ public class DimensionManager {
                 Path dimensionDataPath = DimensionPath.getDimensionDataPath(server, dimensionName);
                 deletePath(dimensionDataPath);
 
-                LOGGER.info("Dimension '{}' deleted", dimensionName);
+                log.info("Dimension '{}' deleted", dimensionName);
             } catch (Exception e) {
-                LOGGER.error("Can't delete dimension '{}'.", dimensionName, e);
+                log.error("Can't delete dimension '{}'.", dimensionName, e);
                 toDelete.add(dimensionName);
             }
         }
@@ -236,20 +276,20 @@ public class DimensionManager {
             try {
                 Files.deleteIfExists(toDeletePath);
             } catch (Exception e) {
-                LOGGER.error("Can't remove to delete dimensions file.", e);
+                log.error("Can't remove to delete dimensions file.", e);
             }
         }
 
         return toDelete;
     }
 
-    private static void deletePath(Path path) {
+    private void deletePath(Path path) {
         if (Files.exists(path)) {
             deleteFileRecursive(path.toFile());
         }
     }
 
-    private static void deleteFileRecursive(File file) {
+    private void deleteFileRecursive(File file) {
         if (file.isDirectory()) {
             File[] files = file.listFiles();
             if (files != null) {
@@ -259,30 +299,6 @@ public class DimensionManager {
             }
         }
         file.delete();
-    }
-
-    public static int getAllDimensions(MinecraftServer server, CommandSourceStack source) {
-        List<String> result = new ArrayList<>(OVERWORLD_NAMES);
-
-        Path dimensionsPath = DimensionPath.getDatapackDimensionPath(server);
-        if (Files.exists(dimensionsPath)) {
-            File dimensionsFile = dimensionsPath.toFile();
-
-            File[] files = dimensionsFile.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isFile() && file.getName().endsWith(".json")) {
-                        String name = file.getName().replaceAll(".json", "");
-                        if (!DIMENSIONS_TO_DELETE.contains(name)) {
-                            result.add(name);
-                        }
-                    }
-                }
-            }
-        }
-
-        source.sendSuccess(() -> Component.literal("Available dimensions: " + result), false);
-        return 1;
     }
 
 }

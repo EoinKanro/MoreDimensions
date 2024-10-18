@@ -1,18 +1,19 @@
 package io.github.eoinkanro.mc.moredimensions.command;
 
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import io.github.eoinkanro.mc.moredimensions.tools.ActionResponse;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.server.MinecraftServer;
 
-public class DeleteDimensionCommand {
+public class DeleteDimensionCommand extends AbstractNamedCommand {
 
-  public static int perform(CommandContext<CommandSourceStack> context) {
-    String name = StringArgumentType.getString(context, "name");
-    MinecraftServer server = context.getSource().getServer();
+  public DeleteDimensionCommand(DimensionManager dimensionManager) {
+    super(dimensionManager);
+  }
 
-    return DimensionManager.deleteDimension(server, name, context.getSource());
+  @Override
+  protected ActionResponse process(CommandContext<CommandSourceStack> context, String name) {
+    return dimensionManager.deleteDimension(context.getSource().getServer(), name);
   }
 
 }

@@ -25,6 +25,9 @@ public class DimensionPath {
         .resolve(MOD_ID);
   }
 
+  /**
+   * @return ./world/datapacks/moredimensions_dimensions/data/moredimensions/dimension/
+   */
   public static Path getDatapackDimensionPath(MinecraftServer server) {
     return getDatapackDataPath(server)
         .resolve("dimension");

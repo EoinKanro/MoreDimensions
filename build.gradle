@@ -185,5 +185,7 @@ idea {
     module {
         downloadSources = true
         downloadJavadoc = true
+
+        testSources.from(file('src/test/java'))
     }
 }

@@ -1,50 +1,39 @@
 package io.github.eoinkanro.mc.moredimensions.command;
 
-import com.mojang.brigadier.arguments.StringArgumentType;
-
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import io.github.eoinkanro.mc.moredimensions.tools.ActionResponse;
 import io.github.eoinkanro.mc.moredimensions.tools.DimensionManager;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.core.registries.Registries;
 
 import static io.github.eoinkanro.mc.moredimensions.MoreDimensions.MOD_ID;
 
-public class TeleportToDimensionCommand {
+public class TeleportToDimensionCommand extends AbstractNamedCommand{
 
-  public static int perform(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-    String name = StringArgumentType.getString(context, "name").toLowerCase()
-        .replaceAll("[^a-z0-9_\\-]", "");
-    CommandSourceStack source = context.getSource();
+  public TeleportToDimensionCommand(DimensionManager dimensionManager) {
+    super(dimensionManager);
+  }
 
-    if (!DimensionManager.isDimensionAvailable(name)) {
-      source.sendFailure(Component.literal(
-          "Dimension '" + name + "' is not available for teleportation"));
-      return 0;
+  @Override
+  protected ActionResponse process(CommandContext<CommandSourceStack> context, String name) {
+    String dimensionName = dimensionManager.toDimensionName(name);
+
+    if (!dimensionManager.isDimensionAvailable(dimensionName)) {
+      return new ActionResponse(0, "Dimension '" + dimensionName + "' is not available for teleportation");
     }
 
-    ServerPlayer player = source.getPlayerOrException();
-    MinecraftServer server = source.getServer();
-
-    ResourceLocation dimensionId;
-    if (DimensionManager.OVERWORLD_NAMES.contains(name)) {
-      dimensionId = ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
-    } else {
-      dimensionId = ResourceLocation.fromNamespaceAndPath(MOD_ID, name);
-    }
-
+    ResourceLocation dimensionId = getDimension(dimensionName);
     ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, dimensionId);
-    ServerLevel targetLevel = server.getLevel(dimensionKey);
+    ServerLevel targetLevel = context.getSource().getServer().getLevel(dimensionKey);
 
     if (targetLevel != null) {
+      ServerPlayer player = context.getSource().getPlayer();
       BlockPos spawnPos = targetLevel.getSharedSpawnPos();
       float spawnAngle = targetLevel.getSharedSpawnAngle();
 
@@ -56,11 +45,18 @@ public class TeleportToDimensionCommand {
           spawnAngle,
           player.getXRot()
       );
-      source.sendSuccess(() -> Component.literal("Teleported to dimension '" + name + "'."), false);
-      return 1;
+      return new ActionResponse(1, "Teleported to dimension '" + dimensionName + "'.");
     } else {
-      source.sendFailure(Component.literal("Dimension '" + name + "' does not exist or is not loaded."));
-      return 0;
+      return new ActionResponse(0, "Dimension '" + dimensionName + "' does not exist or is not loaded.");
     }
   }
+
+  private ResourceLocation getDimension(String dimensionName) {
+    if (DimensionManager.OVERWORLD_NAMES.contains(dimensionName)) {
+      return ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
+    } else {
+      return ResourceLocation.fromNamespaceAndPath(MOD_ID, dimensionName);
+    }
+  }
+
 }
